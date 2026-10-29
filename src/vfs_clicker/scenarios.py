@@ -51,6 +51,31 @@ class VfsLoginScenario:
             await self._wait_for_cloudflare_clearance(page, email)
             self._report(account, "Cloudflare verification completed")
 
+        return await self._submit_login_form(page, account, captcha_handler, email)
+
+    async def run_from_login_page(
+        self,
+        page: Page,
+        account: Account,
+        captcha_handler: CaptchaHandler,
+    ) -> str:
+        self._report(account, "attached to existing Chrome")
+        email = page.locator(
+            "input[type='email'], input[name*='email' i], input[autocomplete='username']"
+        ).first
+        if not await email.is_visible():
+            if await self._has_cloudflare_challenge(page):
+                raise ManualActionRequired("Complete Cloudflare before handing Chrome to the clicker")
+            raise RuntimeError("VFS login form is not visible in the attached Chrome window")
+        return await self._submit_login_form(page, account, captcha_handler, email)
+
+    async def _submit_login_form(
+        self,
+        page: Page,
+        account: Account,
+        captcha_handler: CaptchaHandler,
+        email: Locator,
+    ) -> str:
         password = page.locator(
             "input[type='password'], input[name*='password' i], input[autocomplete='current-password']"
         ).first

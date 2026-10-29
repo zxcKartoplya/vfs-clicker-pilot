@@ -77,6 +77,50 @@ async def test_vfs_login_scenario_submits_semantic_login_form() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vfs_login_scenario_continues_from_attached_login_page() -> None:
+    page_path = Path(__file__).parents[1] / "examples" / "vfs_login_demo.html"
+    account = Account(id="account-1", email="user@example.test", password="secret")
+    stages: list[tuple[str, str]] = []
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        page = await browser.new_page()
+        await page.goto(page_path.resolve().as_uri())
+        result = await VfsLoginScenario(
+            str(page_path),
+            stage_reporter=lambda *args: stages.append(args),
+        ).run_from_login_page(page, account, UnexpectedCaptchaHandler())
+
+        assert result == "login form submitted"
+        assert stages == [
+            ("account-1", "attached to existing Chrome"),
+            ("account-1", "login form ready"),
+            ("account-1", "login form submitted"),
+        ]
+        await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_vfs_login_scenario_rejects_handoff_before_cloudflare_is_complete() -> None:
+    page_path = Path(__file__).parents[1] / "examples" / "vfs_challenge_demo.html"
+    account = Account(id="account-1", email="user@example.test", password="secret")
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        page = await browser.new_page()
+        await page.goto(page_path.resolve().as_uri())
+
+        with pytest.raises(ManualActionRequired, match="before handing Chrome"):
+            await VfsLoginScenario(str(page_path)).run_from_login_page(
+                page,
+                account,
+                UnexpectedCaptchaHandler(),
+            )
+
+        await browser.close()
+
+
+@pytest.mark.asyncio
 async def test_vfs_login_scenario_pauses_for_cloudflare_challenge() -> None:
     page_path = Path(__file__).parents[1] / "examples" / "vfs_challenge_demo.html"
     account = Account(id="account-1", email="user@example.test", password="secret")
