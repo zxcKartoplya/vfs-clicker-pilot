@@ -56,7 +56,13 @@ cp examples/config.example.json config.json
 .venv/bin/vfs-clicker --config config.json --vfs-login
 ```
 
+Для сравнительной диагностики без изменения конфигурации прокси можно временно отключить:
+
+```bash
+.venv/bin/vfs-clicker --config config.json --vfs-login --no-proxy
+```
+
 Для ручного подтверждения Cloudflare параметр `headless` в конфигурации должен быть `false`.
 
-Во время запуска терминал показывает этапы без email, паролей и данных прокси. После строки `Cloudflare verification detected` нужно пройти проверку в браузере и нажать Enter в терминале. Если после отправки формы VFS показывает ещё одну проверку, появится отдельная строка `additional verification detected after submit`. Это второй этап сайта, а не повторный переход к Cloudflare со стороны программы.
+Во время запуска терминал показывает этапы без email, паролей и данных прокси. После строки `Cloudflare verification detected` нужно пройти проверку в браузере и нажать Enter в терминале. Успешное завершение проверки подтверждается только после появления формы входа. Если Cloudflare остаётся на странице, программа рекомендует повторить запуск с другим прокси или `--no-proxy`. Если после отправки формы VFS показывает ещё одну проверку, появится отдельная строка `additional verification detected after submit`.
 

@@ -5,6 +5,7 @@ import pytest
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
+from vfs_clicker.captcha import ManualActionRequired
 from vfs_clicker.models import Account
 from vfs_clicker.scenarios import VfsLoginScenario
 
@@ -32,6 +33,11 @@ class ResolvingPostSubmitCaptchaHandler:
     async def handle(self, page: Page, account: Account, challenge: str) -> None:
         self.challenges.append(challenge)
         await page.evaluate("document.title = 'Verification completed'")
+
+
+class AcknowledgingCaptchaHandler:
+    async def handle(self, page: Page, account: Account, challenge: str) -> None:
+        return None
 
 
 class SocketRetryPage:
@@ -75,14 +81,47 @@ async def test_vfs_login_scenario_pauses_for_cloudflare_challenge() -> None:
     page_path = Path(__file__).parents[1] / "examples" / "vfs_challenge_demo.html"
     account = Account(id="account-1", email="user@example.test", password="secret")
     captcha_handler = ResolvingCaptchaHandler()
+    stages: list[tuple[str, str]] = []
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(channel="chrome", headless=True)
         page = await browser.new_page()
-        result = await VfsLoginScenario(str(page_path)).run(page, account, captcha_handler)
+        result = await VfsLoginScenario(
+            str(page_path),
+            stage_reporter=lambda *args: stages.append(args),
+        ).run(page, account, captcha_handler)
 
         assert captcha_handler.challenges == ["Cloudflare verification"]
         assert result == "login form submitted"
+        await browser.close()
+
+    assert stages == [
+        ("account-1", "opening VFS login page"),
+        ("account-1", "Cloudflare verification detected"),
+        ("account-1", "waiting for Cloudflare clearance"),
+        ("account-1", "Cloudflare verification completed"),
+        ("account-1", "login form ready"),
+        ("account-1", "login form submitted"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_vfs_login_scenario_reports_unresolved_cloudflare_challenge() -> None:
+    page_path = Path(__file__).parents[1] / "examples" / "vfs_challenge_demo.html"
+    account = Account(id="account-1", email="user@example.test", password="secret")
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        page = await browser.new_page()
+        page.set_default_timeout(50)
+
+        with pytest.raises(ManualActionRequired, match="another proxy or --no-proxy"):
+            await VfsLoginScenario(str(page_path)).run(
+                page,
+                account,
+                AcknowledgingCaptchaHandler(),
+            )
+
         await browser.close()
 
 

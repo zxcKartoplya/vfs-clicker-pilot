@@ -61,10 +61,7 @@ class MultiSessionRunner:
                 context = await browser.new_context(**options)
                 page = await context.new_page()
                 self._configure_page(page)
-                detail = await asyncio.wait_for(
-                    scenario.run(page, account, self._captcha_handler),
-                    timeout=self._timeout_seconds,
-                )
+                detail = await scenario.run(page, account, self._captcha_handler)
                 result = SessionResult(account.id, SessionStatus.SUCCEEDED, detail)
             except ManualActionRequired as error:
                 result = SessionResult(account.id, SessionStatus.MANUAL_ACTION_REQUIRED, str(error))
