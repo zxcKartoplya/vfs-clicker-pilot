@@ -128,6 +128,7 @@ async def test_vfs_login_scenario_handles_real_form_shape_cookie_and_login_captc
   <head><meta charset="utf-8"><title>Login | VFS Global</title></head>
   <body>
     <form id="login-form">
+      <input name="username" autocomplete="username" hidden>
       <input id="mat-input-0" formcontrolname="userName" placeholder="jane.doe@email.com" required>
       <input id="mat-input-1" formcontrolname="password" type="password" required>
       <button id="submit" type="submit" disabled>Sign In</button>

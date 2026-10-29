@@ -11,7 +11,8 @@ from vfs_clicker.models import Account
 __all__ = ["DemoLoginScenario", "Scenario", "VfsLoginScenario"]
 
 _EMAIL_SELECTOR = ", ".join(
-    (
+    f"{selector}:visible"
+    for selector in (
         "input[type='email']",
         "input[name*='email' i]",
         "input[id*='email' i]",
@@ -21,7 +22,8 @@ _EMAIL_SELECTOR = ", ".join(
     )
 )
 _PASSWORD_SELECTOR = ", ".join(
-    (
+    f"{selector}:visible"
+    for selector in (
         "input[type='password']",
         "input[name*='password' i]",
         "input[id*='password' i]",
