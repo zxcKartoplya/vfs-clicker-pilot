@@ -8,7 +8,7 @@ from playwright.async_api import Locator, Page, Response, TimeoutError as Playwr
 from vfs_clicker.captcha import CaptchaHandler, ManualActionRequired
 from vfs_clicker.models import Account
 
-__all__ = ["DemoLoginScenario", "Scenario", "VfsLoginScenario"]
+__all__ = ["DemoLoginScenario", "Scenario", "VfsBookingScenario", "VfsLoginScenario"]
 
 _EMAIL_SELECTOR = ", ".join(
     f"{selector}:visible"
@@ -184,6 +184,96 @@ class VfsLoginScenario:
             return await cls.email_locator(page).is_visible()
         except PlaywrightError:
             return False
+
+
+class VfsBookingScenario:
+    def __init__(
+        self,
+        stage_reporter: Callable[[str, str], None] | None = None,
+    ) -> None:
+        self._stage_reporter = stage_reporter
+
+    async def fill_from_current_page(self, page: Page, account: Account) -> str:
+        booking_form = page.get_by_role(
+            "heading",
+            name=re.compile(r"^appointment details$", re.IGNORECASE),
+        ).first
+        if not await booking_form.is_visible():
+            start_booking = page.locator("button:visible, a:visible").filter(
+                has_text=re.compile(r"^\s*start new booking\s*$", re.IGNORECASE),
+            ).first
+            try:
+                await start_booking.wait_for(state="visible")
+            except PlaywrightTimeoutError as error:
+                raise RuntimeError(
+                    "VFS authorization was not confirmed: Start New Booking is unavailable"
+                ) from error
+            self._report(account, "authorization confirmed")
+            self._report(account, "opening booking form")
+            await start_booking.click()
+            await booking_form.wait_for(state="visible")
+        else:
+            self._report(account, "authorization confirmed")
+
+        self._report(account, "booking form ready")
+        comboboxes = page.locator("select:visible, [role='combobox']:visible")
+        await comboboxes.nth(2).wait_for(state="visible")
+        stages = (
+            ("application centre", "application centre selected"),
+            ("appointment category", "appointment category selected"),
+            ("sub-category", "sub-category selected"),
+        )
+        for index, (field_name, stage) in enumerate(stages):
+            await self._choose_first_option(page, comboboxes.nth(index), field_name)
+            self._report(account, stage)
+
+        self._report(account, "booking form filled, not submitted")
+        return "booking form filled, not submitted"
+
+    async def is_ready(self, page: Page) -> bool:
+        start_booking = page.locator("button:visible, a:visible").filter(
+            has_text=re.compile(r"^\s*start new booking\s*$", re.IGNORECASE),
+        ).first
+        booking_form = page.get_by_role(
+            "heading",
+            name=re.compile(r"^appointment details$", re.IGNORECASE),
+        ).first
+        return await start_booking.is_visible() or await booking_form.is_visible()
+
+    async def _choose_first_option(
+        self,
+        page: Page,
+        combobox: Locator,
+        field_name: str,
+    ) -> None:
+        await expect(combobox).to_be_enabled()
+        tag_name = await combobox.evaluate("element => element.tagName")
+        if tag_name == "SELECT":
+            options = combobox.locator("option:not([disabled])")
+            for index in range(await options.count()):
+                option = options.nth(index)
+                text = (await option.inner_text()).strip()
+                if text and not re.match(r"^(choose|select)\b", text, re.IGNORECASE):
+                    await combobox.select_option(label=text)
+                    return
+            raise RuntimeError(f"Booking field '{field_name}' has no selectable options")
+
+        await combobox.click()
+        options = page.locator(
+            "[role='option']:visible:not([aria-disabled='true']):not([disabled])"
+        )
+        await options.first.wait_for(state="visible")
+        for index in range(await options.count()):
+            option = options.nth(index)
+            text = (await option.inner_text()).strip()
+            if text and not re.match(r"^(choose|select)\b", text, re.IGNORECASE):
+                await option.click()
+                return
+        raise RuntimeError(f"Booking field '{field_name}' has no selectable options")
+
+    def _report(self, account: Account, stage: str) -> None:
+        if self._stage_reporter is not None:
+            self._stage_reporter(account.id, stage)
 
 
 def _as_url(value: str) -> str:

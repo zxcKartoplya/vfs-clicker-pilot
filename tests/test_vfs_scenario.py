@@ -7,7 +7,7 @@ from playwright.async_api import Page, async_playwright
 
 from vfs_clicker.captcha import ManualActionRequired
 from vfs_clicker.models import Account
-from vfs_clicker.scenarios import VfsLoginScenario
+from vfs_clicker.scenarios import VfsBookingScenario, VfsLoginScenario
 
 
 class UnexpectedCaptchaHandler:
@@ -330,3 +330,103 @@ async def test_vfs_login_scenario_handles_additional_verification_after_submit(
 
     assert result == "login form submitted"
     assert captcha_handler.challenges == ["VFS login verification"]
+
+
+@pytest.mark.asyncio
+async def test_vfs_booking_scenario_fills_dependent_fields_without_continuing(
+    tmp_path: Path,
+) -> None:
+    page_path = tmp_path / "booking.html"
+    page_path.write_text(
+        """<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Dashboard | VFS Global</title></head>
+  <body data-submitted="false">
+    <section id="dashboard">
+      <button id="start-booking" type="button">Start New Booking</button>
+    </section>
+    <section id="booking-form" hidden>
+      <h1>Appointment Details</h1>
+      <button id="centre" type="button" role="combobox" aria-expanded="false">
+        Choose your Application Centre
+      </button>
+      <div id="centre-options" hidden>
+        <button type="button" role="option">Centre One</button>
+      </div>
+      <button id="category" type="button" role="combobox" aria-expanded="false" disabled>
+        Select your appointment category
+      </button>
+      <div id="category-options" hidden>
+        <button type="button" role="option">Category One</button>
+      </div>
+      <button id="subcategory" type="button" role="combobox" aria-expanded="false" disabled>
+        Select your sub-category
+      </button>
+      <div id="subcategory-options" hidden>
+        <button type="button" role="option">Sub-category One</button>
+      </div>
+      <button id="continue" type="button" disabled>Continue</button>
+    </section>
+    <script>
+      const fields = [
+        ["centre", "centre-options", "category"],
+        ["category", "category-options", "subcategory"],
+        ["subcategory", "subcategory-options", "continue"],
+      ];
+      document.querySelector("#start-booking").addEventListener("click", () => {
+        document.querySelector("#dashboard").hidden = true;
+        document.querySelector("#booking-form").hidden = false;
+      });
+      for (const [fieldId, optionsId, nextId] of fields) {
+        const field = document.querySelector(`#${fieldId}`);
+        const options = document.querySelector(`#${optionsId}`);
+        field.addEventListener("click", () => {
+          field.setAttribute("aria-expanded", "true");
+          options.hidden = false;
+        });
+        options.querySelector("[role='option']").addEventListener("click", (event) => {
+          field.textContent = event.currentTarget.textContent;
+          field.setAttribute("aria-expanded", "false");
+          options.hidden = true;
+          document.querySelector(`#${nextId}`).disabled = false;
+        });
+      }
+      document.querySelector("#continue").addEventListener("click", () => {
+        document.body.dataset.submitted = "true";
+      });
+    </script>
+  </body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    account = Account(id="account-1", email="user@example.test", password="secret")
+    stages: list[tuple[str, str]] = []
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        page = await browser.new_page()
+        await page.goto(page_path.resolve().as_uri())
+        scenario = VfsBookingScenario(
+            stage_reporter=lambda *args: stages.append(args),
+        )
+
+        assert await scenario.is_ready(page)
+        result = await scenario.fill_from_current_page(page, account)
+
+        assert result == "booking form filled, not submitted"
+        assert await page.locator("#centre").inner_text() == "Centre One"
+        assert await page.locator("#category").inner_text() == "Category One"
+        assert await page.locator("#subcategory").inner_text() == "Sub-category One"
+        assert await page.locator("#continue").is_enabled()
+        assert await page.locator("body").get_attribute("data-submitted") == "false"
+        assert stages == [
+            ("account-1", "authorization confirmed"),
+            ("account-1", "opening booking form"),
+            ("account-1", "booking form ready"),
+            ("account-1", "application centre selected"),
+            ("account-1", "appointment category selected"),
+            ("account-1", "sub-category selected"),
+            ("account-1", "booking form filled, not submitted"),
+        ]
+        await browser.close()

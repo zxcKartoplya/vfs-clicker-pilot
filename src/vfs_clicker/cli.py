@@ -11,7 +11,7 @@ from vfs_clicker.handoff import ChromeHandoffSession, find_chrome_executable, pr
 from vfs_clicker.models import Account, SessionResult, SessionStatus
 from vfs_clicker.proxies import BridgedProxyProvider
 from vfs_clicker.runner import MultiSessionRunner
-from vfs_clicker.scenarios import DemoLoginScenario, Scenario, VfsLoginScenario
+from vfs_clicker.scenarios import DemoLoginScenario, Scenario, VfsBookingScenario, VfsLoginScenario
 
 
 def main() -> None:
@@ -74,7 +74,7 @@ async def _run_chrome_handoff(config_path: Path, no_proxy: bool = False) -> int:
             chrome_started = True
             await asyncio.to_thread(
                 input,
-                f"{account.id}: complete Cloudflare in ordinary Chrome, wait for the login form, then press Enter: ",
+                f"{account.id}: complete Cloudflare in ordinary Chrome, wait for the login form or dashboard, then press Enter: ",
             )
             detail = await _continue_handoff(endpoint, config.target_url, account, config.timeout_seconds)
             result = SessionResult(account.id, SessionStatus.SUCCEEDED, detail)
@@ -117,11 +117,16 @@ async def _continue_handoff(
                 target_url,
                 stage_reporter=lambda account_id, stage: print(f"{account_id}: {stage}"),
             )
-            return await scenario.run_from_login_page(
-                page,
-                account,
-                ManualCaptchaHandler(allow_interactive=True),
+            booking = VfsBookingScenario(
+                stage_reporter=lambda account_id, stage: print(f"{account_id}: {stage}"),
             )
+            if not await booking.is_ready(page):
+                await scenario.run_from_login_page(
+                    page,
+                    account,
+                    ManualCaptchaHandler(allow_interactive=True),
+                )
+            return await booking.fill_from_current_page(page, account)
         finally:
             await browser.close()
 
