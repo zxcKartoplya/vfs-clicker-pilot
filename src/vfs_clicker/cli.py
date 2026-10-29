@@ -40,7 +40,10 @@ def _create_scenario(name: str, target_url: str) -> Scenario:
     if name == "demo":
         return DemoLoginScenario(target_url)
     if name == "vfs-login":
-        return VfsLoginScenario(target_url)
+        return VfsLoginScenario(
+            target_url,
+            stage_reporter=lambda account_id, stage: print(f"{account_id}: {stage}"),
+        )
     raise ValueError(f"Unknown scenario: {name}")
 
 
