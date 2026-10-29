@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Demo flow</title>
+  </head>
+  <body>
+    <main>
+      <form id="login-form">
+        <label>
+          Email
+          <input data-testid="email" type="email" required>
+        </label>
+        <label>
+          Password
+          <input data-testid="password" type="password" required>
+        </label>
+        <button data-testid="continue" type="submit">Продолжить</button>
+      </form>
+      <p data-testid="result" hidden></p>
+    </main>
+    <script>
+      const form = document.querySelector("#login-form");
+      const result = document.querySelector("[data-testid='result']");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        result.textContent = "success";
+        result.hidden = false;
+      });
+    </script>
+  </body>
+</html>
+

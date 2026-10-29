@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vfs-clicker-pilot"
+version = "0.1.0"
+description = "Isolated multi-session browser automation pilot"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.50,<2",
+    "pproxy==2.7.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+    "pytest-asyncio>=0.24,<2",
+]
+
+[project.scripts]
+vfs-clicker = "vfs_clicker.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vfs_clicker"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+

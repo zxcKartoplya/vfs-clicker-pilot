@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Just a moment...</title>
+  </head>
+  <body>
+    <section data-testid="challenge">Security verification</section>
+    <form id="login-form" hidden>
+      <input type="email" autocomplete="username" required>
+      <input type="password" autocomplete="current-password" required>
+      <button type="submit">Continue</button>
+    </form>
+    <script>
+      document.querySelector("#login-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+      });
+    </script>
+  </body>
+</html>

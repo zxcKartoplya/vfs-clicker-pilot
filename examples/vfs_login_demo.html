@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>VFS login demo</title>
+  </head>
+  <body>
+    <form id="login-form">
+      <label>
+        Email
+        <input type="email" autocomplete="username" required>
+      </label>
+      <label>
+        Password
+        <input type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p data-testid="result" hidden></p>
+    <script>
+      const form = document.querySelector("#login-form");
+      const result = document.querySelector("[data-testid='result']");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        result.textContent = "submitted";
+        result.hidden = false;
+      });
+    </script>
+  </body>
+</html>

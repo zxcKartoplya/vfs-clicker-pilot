@@ -1,0 +1,20 @@
+{
+  "target_url": "examples/demo.html",
+  "headless": true,
+  "max_parallel": 2,
+  "timeout_seconds": 30,
+  "accounts": [
+    {
+      "id": "demo-01",
+      "email": "demo01@example.test",
+      "password": "replace-locally"
+    },
+    {
+      "id": "demo-02",
+      "email": "demo02@example.test",
+      "password": "replace-locally"
+    }
+  ],
+  "proxies": []
+}
+
