@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import pytest
+from playwright.async_api import async_playwright
 
+from vfs_clicker.cli import _find_target_page
 from vfs_clicker.handoff import ChromeHandoffSession, profile_path
 from vfs_clicker.models import ProxySettings
 
@@ -66,3 +68,19 @@ while True:
     await session.close()
 
     assert session._process is None
+
+
+@pytest.mark.asyncio
+async def test_handoff_selects_tab_with_visible_login_form() -> None:
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        context = await browser.new_context()
+        login_page = await context.new_page()
+        await login_page.set_content('<input placeholder="jane.doe@email.com">')
+        blank_page = await context.new_page()
+        await blank_page.set_content("<main>Blank page</main>")
+
+        selected = await _find_target_page(context, "about:blank")
+
+        assert selected is login_page
+        await browser.close()

@@ -10,6 +10,26 @@ from vfs_clicker.models import Account
 
 __all__ = ["DemoLoginScenario", "Scenario", "VfsLoginScenario"]
 
+_EMAIL_SELECTOR = ", ".join(
+    (
+        "input[type='email']",
+        "input[name*='email' i]",
+        "input[id*='email' i]",
+        "input[formcontrolname*='email' i]",
+        "input[placeholder*='email' i]",
+        "input[autocomplete='username']",
+    )
+)
+_PASSWORD_SELECTOR = ", ".join(
+    (
+        "input[type='password']",
+        "input[name*='password' i]",
+        "input[id*='password' i]",
+        "input[formcontrolname*='password' i]",
+        "input[autocomplete='current-password']",
+    )
+)
+
 
 class Scenario(Protocol):
     async def run(self, page: Page, account: Account, captcha_handler: CaptchaHandler) -> str: ...
@@ -41,9 +61,7 @@ class VfsLoginScenario:
     async def run(self, page: Page, account: Account, captcha_handler: CaptchaHandler) -> str:
         self._report(account, "opening VFS login page")
         response = await self._navigate(page, account)
-        email = page.locator(
-            "input[type='email'], input[name*='email' i], input[autocomplete='username']"
-        ).first
+        email = self.email_locator(page)
         if (response is not None and response.status == 403) or await self._has_cloudflare_challenge(page):
             self._report(account, "Cloudflare verification detected")
             await captcha_handler.handle(page, account, "Cloudflare verification")
@@ -60,9 +78,7 @@ class VfsLoginScenario:
         captcha_handler: CaptchaHandler,
     ) -> str:
         self._report(account, "attached to existing Chrome")
-        email = page.locator(
-            "input[type='email'], input[name*='email' i], input[autocomplete='username']"
-        ).first
+        email = self.email_locator(page)
         if not await email.is_visible():
             if await self._has_cloudflare_challenge(page):
                 raise ManualActionRequired("Complete Cloudflare before handing Chrome to the clicker")
@@ -76,9 +92,8 @@ class VfsLoginScenario:
         captcha_handler: CaptchaHandler,
         email: Locator,
     ) -> str:
-        password = page.locator(
-            "input[type='password'], input[name*='password' i], input[autocomplete='current-password']"
-        ).first
+        await self._dismiss_cookie_banner(page, account)
+        password = page.locator(_PASSWORD_SELECTOR).first
         submit = page.get_by_role(
             "button",
             name=re.compile(r"sign in|log in|continue|войти|продолжить", re.IGNORECASE),
@@ -90,7 +105,16 @@ class VfsLoginScenario:
         self._report(account, "login form ready")
         await email.fill(account.email)
         await password.fill(account.password)
-        await submit.click()
+        self._report(account, "login credentials filled")
+        if not await submit.is_enabled():
+            self._report(account, "VFS login CAPTCHA required")
+            await captcha_handler.handle(page, account, "VFS login CAPTCHA")
+        try:
+            await submit.click()
+        except PlaywrightTimeoutError as error:
+            if not await submit.is_enabled():
+                raise ManualActionRequired("VFS login CAPTCHA was not completed") from error
+            raise
         self._report(account, "login form submitted")
         await page.wait_for_timeout(1_000)
         if await self._has_cloudflare_challenge(page):
@@ -121,7 +145,18 @@ class VfsLoginScenario:
         title = (await page.title()).lower()
         if "just a moment" in title or "security verification" in title:
             return True
+        if await self.has_visible_login_form(page):
+            return False
         return await page.locator("iframe[src*='challenges.cloudflare.com']").count() > 0
+
+    async def _dismiss_cookie_banner(self, page: Page, account: Account) -> None:
+        reject = page.get_by_role(
+            "button",
+            name=re.compile(r"reject all|decline all|отклонить все", re.IGNORECASE),
+        ).first
+        if await reject.is_visible():
+            await reject.click()
+            self._report(account, "cookie banner dismissed")
 
     async def _wait_for_cloudflare_clearance(self, page: Page, email: Locator) -> None:
         try:
@@ -136,6 +171,17 @@ class VfsLoginScenario:
     def _report(self, account: Account, stage: str) -> None:
         if self._stage_reporter is not None:
             self._stage_reporter(account.id, stage)
+
+    @staticmethod
+    def email_locator(page: Page) -> Locator:
+        return page.locator(_EMAIL_SELECTOR).first
+
+    @classmethod
+    async def has_visible_login_form(cls, page: Page) -> bool:
+        try:
+            return await cls.email_locator(page).is_visible()
+        except PlaywrightError:
+            return False
 
 
 def _as_url(value: str) -> str:

@@ -40,6 +40,15 @@ class AcknowledgingCaptchaHandler:
         return None
 
 
+class ResolvingLoginCaptchaHandler:
+    def __init__(self) -> None:
+        self.challenges: list[str] = []
+
+    async def handle(self, page: Page, account: Account, challenge: str) -> None:
+        self.challenges.append(challenge)
+        await page.locator("#submit").evaluate("element => element.disabled = false")
+
+
 class SocketRetryPage:
     def __init__(self) -> None:
         self.attempts = 0
@@ -57,8 +66,15 @@ class SocketRetryPage:
 
 
 class EmptyLocator:
+    @property
+    def first(self) -> "EmptyLocator":
+        return self
+
     async def count(self) -> int:
         return 0
+
+    async def is_visible(self) -> bool:
+        return False
 
 
 @pytest.mark.asyncio
@@ -95,6 +111,70 @@ async def test_vfs_login_scenario_continues_from_attached_login_page() -> None:
         assert stages == [
             ("account-1", "attached to existing Chrome"),
             ("account-1", "login form ready"),
+            ("account-1", "login credentials filled"),
+            ("account-1", "login form submitted"),
+        ]
+        await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_vfs_login_scenario_handles_real_form_shape_cookie_and_login_captcha(
+    tmp_path: Path,
+) -> None:
+    page_path = tmp_path / "real-vfs-form.html"
+    page_path.write_text(
+        """<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Login | VFS Global</title></head>
+  <body>
+    <form id="login-form">
+      <input id="mat-input-0" formcontrolname="userName" placeholder="jane.doe@email.com" required>
+      <input id="mat-input-1" formcontrolname="password" type="password" required>
+      <button id="submit" type="submit" disabled>Sign In</button>
+    </form>
+    <section id="cookie-banner">
+      <button id="reject-cookies" type="button">Отклонить все</button>
+    </section>
+    <p data-testid="result" hidden></p>
+    <script>
+      document.querySelector("#reject-cookies").addEventListener("click", () => {
+        document.querySelector("#cookie-banner").hidden = true;
+      });
+      document.querySelector("#login-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const result = document.querySelector("[data-testid='result']");
+        result.textContent = "submitted";
+        result.hidden = false;
+      });
+    </script>
+  </body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    account = Account(id="account-1", email="user@example.test", password="secret")
+    captcha_handler = ResolvingLoginCaptchaHandler()
+    stages: list[tuple[str, str]] = []
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chrome", headless=True)
+        page = await browser.new_page()
+        await page.goto(page_path.resolve().as_uri())
+        result = await VfsLoginScenario(
+            str(page_path),
+            stage_reporter=lambda *args: stages.append(args),
+        ).run_from_login_page(page, account, captcha_handler)
+
+        assert result == "login form submitted"
+        assert captcha_handler.challenges == ["VFS login CAPTCHA"]
+        assert await page.locator("#cookie-banner").is_hidden()
+        assert await page.get_by_test_id("result").text_content() == "submitted"
+        assert stages == [
+            ("account-1", "attached to existing Chrome"),
+            ("account-1", "cookie banner dismissed"),
+            ("account-1", "login form ready"),
+            ("account-1", "login credentials filled"),
+            ("account-1", "VFS login CAPTCHA required"),
             ("account-1", "login form submitted"),
         ]
         await browser.close()
@@ -145,6 +225,7 @@ async def test_vfs_login_scenario_pauses_for_cloudflare_challenge() -> None:
         ("account-1", "waiting for Cloudflare clearance"),
         ("account-1", "Cloudflare verification completed"),
         ("account-1", "login form ready"),
+        ("account-1", "login credentials filled"),
         ("account-1", "login form submitted"),
     ]
 
@@ -188,6 +269,7 @@ async def test_vfs_login_scenario_reports_stages_without_credentials() -> None:
     assert stages == [
         ("account-1", "opening VFS login page"),
         ("account-1", "login form ready"),
+        ("account-1", "login credentials filled"),
         ("account-1", "login form submitted"),
     ]
     assert all(account.email not in stage and account.password not in stage for _, stage in stages)

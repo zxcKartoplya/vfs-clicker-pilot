@@ -109,7 +109,7 @@ async def _continue_handoff(
         try:
             if not browser.contexts:
                 raise RuntimeError("Attached Chrome has no browser context")
-            page = _find_target_page(browser.contexts[0], target_url)
+            page = await _find_target_page(browser.contexts[0], target_url)
             timeout_ms = timeout_seconds * 1_000
             page.set_default_timeout(timeout_ms)
             page.set_default_navigation_timeout(timeout_ms)
@@ -126,13 +126,20 @@ async def _continue_handoff(
             await browser.close()
 
 
-def _find_target_page(context: BrowserContext, target_url: str) -> Page:
+async def _find_target_page(context: BrowserContext, target_url: str) -> Page:
     target_host = urlsplit(target_url).hostname
-    for page in reversed(context.pages):
-        if urlsplit(page.url).hostname == target_host:
+    pages = list(reversed(context.pages))
+    candidates = [page for page in pages if urlsplit(page.url).hostname == target_host]
+    for page in candidates:
+        if await VfsLoginScenario.has_visible_login_form(page):
             return page
-    if context.pages:
-        return context.pages[-1]
+    if candidates:
+        return candidates[0]
+    for page in pages:
+        if await VfsLoginScenario.has_visible_login_form(page):
+            return page
+    if pages:
+        return pages[0]
     raise RuntimeError("Attached Chrome has no open pages")
 
 
