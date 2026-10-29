@@ -60,6 +60,7 @@ class MultiSessionRunner:
                 options = {"proxy": proxy.as_playwright_options()} if proxy else {}
                 context = await browser.new_context(**options)
                 page = await context.new_page()
+                self._configure_page(page)
                 detail = await asyncio.wait_for(
                     scenario.run(page, account, self._captcha_handler),
                     timeout=self._timeout_seconds,
@@ -74,4 +75,9 @@ class MultiSessionRunner:
                     await context.close()
             await self._proxy_provider.release(account, proxy, result)
             return result
+
+    def _configure_page(self, page: Page) -> None:
+        timeout_ms = self._timeout_seconds * 1_000
+        page.set_default_timeout(timeout_ms)
+        page.set_default_navigation_timeout(timeout_ms)
 

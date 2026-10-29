@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from typing import cast
 
 import pytest
 from playwright.async_api import Page
@@ -16,6 +17,18 @@ class PartiallyFailingScenario:
         if account.id == "account-1":
             raise RuntimeError("expected failure")
         return "completed"
+
+
+class RecordingPageTimeouts:
+    def __init__(self) -> None:
+        self.default_timeout: float | None = None
+        self.navigation_timeout: float | None = None
+
+    def set_default_timeout(self, timeout: float) -> None:
+        self.default_timeout = timeout
+
+    def set_default_navigation_timeout(self, timeout: float) -> None:
+        self.navigation_timeout = timeout
 
 
 @pytest.mark.asyncio
@@ -51,6 +64,22 @@ async def test_parallel_limit_is_positive() -> None:
         )
 
     await asyncio.sleep(0)
+
+
+def test_runner_applies_configured_timeout_to_page_navigation() -> None:
+    runner = MultiSessionRunner(
+        proxy_provider=StaticProxyProvider(()),
+        captcha_handler=ManualCaptchaHandler(allow_interactive=False),
+        max_parallel=1,
+        timeout_seconds=120,
+        headless=True,
+    )
+    page = RecordingPageTimeouts()
+
+    runner._configure_page(cast(Page, page))
+
+    assert page.default_timeout == 120_000
+    assert page.navigation_timeout == 120_000
 
 
 @pytest.mark.asyncio
